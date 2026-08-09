@@ -21,13 +21,13 @@ ContainerShield AI scans any Docker image and gives you a single, unified view o
 ## 🖥️ Dashboard Preview
 
 <p align="center">
-  <a href="https://drive.google.com/file/d/1lS4XkI1r2IPgIjD6iBFGmB9ss6Yo6UMz/view?usp=drivesdk">
+  <a href="https://drive.google.com/file/d/1lS4XkI1r2IPgIjD6iBFGmB9ss6Yo6UMz/view?usp=drivesdk" target="_blank">
     <img src="frontend/dashboard-image.jpeg" alt="ContainerShield AI dashboard showing a scan of nginx:latest with a risk score of 100/100 and a vulnerability severity breakdown" width="800">
   </a>
 </p>
 
 <p align="center">
-  <sub>Scan results for <code>nginx:latest</code> — risk score, severity breakdown, and per-CVE detail. <a href="https://drive.google.com/file/d/1lS4XkI1r2IPgIjD6iBFGmB9ss6Yo6UMz/view?usp=drivesdk">View full size ↗</a></sub>
+  <sub>Scan results for <code>nginx:latest</code> — risk score, severity breakdown, and per-CVE detail. <a target="_blank" href="https://drive.google.com/file/d/1lS4XkI1r2IPgIjD6iBFGmB9ss6Yo6UMz/view?usp=drivesdk">View full size ↗</a></sub>
 </p>
 
 ---
