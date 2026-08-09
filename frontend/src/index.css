@@ -1,0 +1,44 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+}
+.container { max-width: 1000px; margin: 0 auto; padding: 32px 20px; }
+h1 { font-size: 24px; margin-bottom: 4px; }
+.subtitle { color: #94a3b8; margin-bottom: 24px; }
+.scan-form { display: flex; gap: 10px; margin-bottom: 24px; }
+.scan-form input {
+  flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155;
+  background: #1e293b; color: #e5e7eb; font-size: 14px;
+}
+.scan-form button {
+  padding: 10px 18px; border-radius: 8px; border: none;
+  background: #2563eb; color: white; font-weight: 600; cursor: pointer;
+}
+.scan-form button:disabled { background: #475569; cursor: not-allowed; }
+.card {
+  background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  border: 1px solid #334155;
+}
+.status-pill {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+}
+.status-pending, .status-running { background: #78350f; color: #fcd34d; }
+.status-done { background: #14532d; color: #86efac; }
+.status-failed { background: #7f1d1d; color: #fca5a5; }
+.risk-score { font-size: 28px; font-weight: 700; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #334155; }
+th { color: #94a3b8; font-weight: 600; }
+.sev-CRITICAL { color: #f87171; font-weight: 700; }
+.sev-HIGH { color: #fb923c; font-weight: 700; }
+.sev-MEDIUM { color: #fbbf24; }
+.sev-LOW { color: #a3e635; }
+.sev-UNKNOWN { color: #94a3b8; }
+.report-btn {
+  margin-top: 12px; padding: 8px 14px; border-radius: 8px; border: 1px solid #334155;
+  background: transparent; color: #e5e7eb; cursor: pointer; font-size: 13px;
+}
+.empty-state { color: #64748b; text-align: center; padding: 40px 0; }

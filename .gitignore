@@ -1,0 +1,23 @@
+﻿# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python / Backend
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Environment secrets
+.env
+backend/.env
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Zip files
+*.zip
