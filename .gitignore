@@ -21,3 +21,10 @@ Thumbs.db
 
 # Zip files
 *.zip
+
+# local debug / backup files
+*.bak
+csai-debug.txt
+gitleaks-test.json
+grype-result.json
+backend/do
