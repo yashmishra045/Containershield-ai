@@ -1,0 +1,180 @@
+
+name: ContainerShield AI DevSecOps Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: csai-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout full Git history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository with Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  frontend-build:
+    name: Frontend Build Verification
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: csai-frontend-build
+          path: frontend/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  backend-security:
+    name: Build and Scan Backend Image
+    runs-on: ubuntu-latest
+    needs:
+      - secrets-scan
+      - frontend-build
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Validate Docker Compose configuration
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: ci_db
+          DATABASE_URL: postgresql://ci_user:ci_password@db:5432/ci_db
+        run: docker compose config --quiet
+
+      - name: Build backend image
+        run: |
+          docker build \
+            --pull \
+            -f backend/Dockerfile \
+            -t csai-backend:${GITHUB_SHA} \
+            backend
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: image
+          image-ref: csai-backend:${{ github.sha }}
+          format: table
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Scan image with Grype
+        uses: anchore/scan-action@v7
+        with:
+          image: csai-backend:${{ github.sha }}
+          fail-build: true
+          severity-cutoff: high
+
+      - name: Generate backend SBOM with Syft
+        uses: anchore/sbom-action@v0
+        with:
+          image: csai-backend:${{ github.sha }}
+          format: spdx-json
+          output-file: backend-sbom.spdx.json
+
+      - name: Upload SBOM report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csai-backend-sbom
+          path: backend-sbom.spdx.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Save scanned image
+        run: docker save csai-backend:${GITHUB_SHA} -o backend-image.tar
+
+      - name: Upload scanned image
+        uses: actions/upload-artifact@v4
+        with:
+          name: csai-backend-image
+          path: backend-image.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-backend:
+    name: Publish Backend Image to GHCR
+    runs-on: ubuntu-latest
+    needs: backend-security
+    if: >-
+      success() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download scanned image
+        uses: actions/download-artifact@v4
+        with:
+          name: csai-backend-image
+          path: .
+
+      - name: Load scanned image
+        run: docker load -i backend-image.tar
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish immutable backend image
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository }}/backend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_NAME="$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+
+          docker tag "csai-backend:${IMAGE_TAG}" "${IMAGE_NAME}:${IMAGE_TAG}"
+          docker push "${IMAGE_NAME}:${IMAGE_TAG}"
