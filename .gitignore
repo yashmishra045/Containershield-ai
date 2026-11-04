@@ -28,3 +28,7 @@ csai-debug.txt
 gitleaks-test.json
 grype-result.json
 backend/do
+
+# Local backups and database dumps
+*.backup
+csai_backup_before_auth.sql

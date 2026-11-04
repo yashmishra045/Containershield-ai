@@ -7,7 +7,12 @@ import os
 import subprocess
 import tempfile
 import tarfile
+import threading
 from typing import Any
+
+
+# Trivy uses a shared local cache; serialize Trivy runs in this process.
+TRIVY_LOCK = threading.Lock()
 
 
 def _run(command: list[str], timeout: int = 600) -> tuple[str, str, int]:
@@ -80,20 +85,33 @@ def _sev(x: Any) -> str:
 # ---------------- TRIVY ----------------
 
 def run_trivy(image_name: str) -> dict[str, Any]:
-    out, _, _ = _run(
-        [
-            "trivy",
-            "image",
-            "--format",
-            "json",
-            "--quiet",
-            image_name,
-        ]
-    )
+    """
+    Run Trivy with a process-local lock to avoid concurrent cache access.
+
+    The lock covers the complete Trivy process. Other scans in this Python
+    process wait here until the current Trivy invocation releases the lock.
+    """
+    print(f"[TRIVY] Waiting for cache lock: {image_name}")
+
+    with TRIVY_LOCK:
+        print(f"[TRIVY] Cache lock acquired: {image_name}")
+
+        out, _, _ = _run(
+            [
+                "trivy",
+                "image",
+                "--format",
+                "json",
+                "--quiet",
+                image_name,
+            ],
+            timeout=900,
+        )
+
+        print(f"[TRIVY] Scan command completed: {image_name}")
 
     data = _json(out, "Trivy")
-
-    return data if isinstance(data, dict) else []
+    return data if isinstance(data, dict) else {}
 
 
 def normalize_trivy(
@@ -802,145 +820,101 @@ def calculate_risk_score(
 
 def run_full_scan(
     image_name: str,
+    progress_callback=None,
 ) -> dict[str, Any]:
+    """Run all four scanners and optionally report overall progress.
+
+    Progress is a single pipeline percentage, updated when each scanner
+    stage finishes: Trivy 25, Grype 50, Gitleaks 75, Syft 100.
+    A scanner failure is recorded as a partial-scan error and does not stop
+    the remaining scanners, matching the previous CSAI behaviour.
+
+    progress_callback, when supplied, is called as:
+        progress_callback(percent: int, current_stage: str)
+    """
 
     raw: dict[str, Any] = {}
     errors: list[str] = []
     all_vulns: list[dict[str, Any]] = []
+    secrets: list[dict[str, Any]] = []
+    sbom: list[dict[str, Any]] = []
 
+    def report(percent: int, stage: str) -> None:
+        if progress_callback is not None:
+            try:
+                progress_callback(percent, stage)
+            except Exception as callback_error:
+                # A progress/database update failure must not discard scan results.
+                print(f"[PROGRESS WARNING] {callback_error}")
+
+    print("====================================")
+    print(f"Starting scan: {image_name}")
+    print("====================================")
+
+    # 1. Trivy (first quarter of the overall pipeline)
+    report(0, "Running Trivy")
     try:
-
         x = run_trivy(image_name)
-
         raw["trivy"] = x
-
-        all_vulns += normalize_trivy(x)
-
+        all_vulns.extend(normalize_trivy(x))
         print("[OK] Trivy completed")
-
     except Exception as e:
-
         raw["trivy"] = {}
+        errors.append(f"Trivy: {e}")
+        print(f"[ERROR] Trivy failed: {e}")
+    report(25, "Trivy completed")
 
-        errors.append(
-            f"Trivy: {e}"
-        )
-
-        print(
-            f"[ERROR] Trivy failed: {e}"
-        )
-
+    # 2. Grype (second quarter)
+    report(25, "Running Grype")
     try:
-
         x = run_grype(image_name)
-
         raw["grype"] = x
-
-        all_vulns += normalize_grype(x)
-
+        all_vulns.extend(normalize_grype(x))
         print("[OK] Grype completed")
-
     except Exception as e:
-
         raw["grype"] = {}
+        errors.append(f"Grype: {e}")
+        print(f"[ERROR] Grype failed: {e}")
+    report(50, "Grype completed")
 
-        errors.append(
-            f"Grype: {e}"
-        )
+    vulnerabilities = deduplicate_vulnerabilities(all_vulns)
 
-        print(
-            f"[ERROR] Grype failed: {e}"
-        )
-
-    vulnerabilities = deduplicate_vulnerabilities(
-        all_vulns
-    )
-
+    # 3. Gitleaks (third quarter)
+    report(50, "Running Gitleaks")
     try:
-
         x = run_gitleaks(image_name)
-
         raw["gitleaks"] = x
-
         secrets = normalize_gitleaks(x)
-
-        print(
-            "[OK] Gitleaks completed"
-        )
-
+        print("[OK] Gitleaks completed")
     except Exception as e:
-
         raw["gitleaks"] = []
+        errors.append(f"Gitleaks: {e}")
+        print(f"[ERROR] Gitleaks failed: {e}")
+    report(75, "Gitleaks completed")
 
-        secrets = []
-
-        errors.append(
-            f"Gitleaks: {e}"
-        )
-
-        print(
-            f"[ERROR] Gitleaks failed: {e}"
-        )
-
+    # 4. Syft (final quarter)
+    report(75, "Running Syft")
     try:
-
         x = run_syft(image_name)
-
         raw["syft"] = x
-
         sbom = normalize_syft(x)
-
-        print(
-            "[OK] Syft completed"
-        )
-
+        print("[OK] Syft completed")
     except Exception as e:
-
         raw["syft"] = []
+        errors.append(f"Syft: {e}")
+        print(f"[ERROR] Syft failed: {e}")
+    report(100, "Scan completed")
 
-        sbom = []
-
-        errors.append(
-            f"Syft: {e}"
-        )
-
-        print(
-            f"[ERROR] Syft failed: {e}"
-        )
-
-    risk_score = calculate_risk_score(
-        vulnerabilities
-    )
-
+    risk_score = calculate_risk_score(vulnerabilities)
     raw["errors"] = errors
 
-    print(
-        "===================================="
-    )
-
-    print(
-        f"Scan completed: {image_name}"
-    )
-
-    print(
-        f"Vulnerabilities: {len(vulnerabilities)}"
-    )
-
-    print(
-        f"Secrets: {len(secrets)}"
-    )
-
-    print(
-        f"SBOM components: {len(sbom)}"
-    )
-
-    print(
-        f"Errors: {errors}"
-    )
-
-    print(
-        "===================================="
-    )
+    print("====================================")
+    print(f"Scan completed: {image_name}")
+    print(f"Vulnerabilities: {len(vulnerabilities)}")
+    print(f"Secrets: {len(secrets)}")
+    print(f"SBOM components: {len(sbom)}")
+    print(f"Errors: {errors}")
+    print("====================================")
 
     return {
         "vulnerabilities": vulnerabilities,

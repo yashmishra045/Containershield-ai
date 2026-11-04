@@ -28,23 +28,132 @@ const NAV_ITEMS = [
 ]
 
 export default function App() {
+  const [token, setToken] = useState(() => {
+    try { return localStorage.getItem('csai-access-token') || '' } catch { return '' }
+  })
+  const [currentUser, setCurrentUser] = useState(null)
+  const [authView, setAuthView] = useState(() => {
+    try { return localStorage.getItem('csai-access-token') ? 'app' : 'login' } catch { return 'login' }
+  })
+  const [authError, setAuthError] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [adminUsers, setAdminUsers] = useState([])
+  const [loginHistory, setLoginHistory] = useState([])
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [adminError, setAdminError] = useState('')
   const [imageName, setImageName] = useState('nginx:latest')
   const [scan, setScan] = useState(null)
+  const [dashboardStats, setDashboardStats] = useState({ total_scans: 0, last_scan: null })
+  const [statsError, setStatsError] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('csai-theme') || 'dark' } catch { return 'dark' }
   })
   const pollRef = useRef(null)
+  const activeScanIdRef = useRef(null)
 
   useEffect(() => {
     try { localStorage.setItem('csai-theme', theme) } catch { /* storage may be unavailable */ }
   }, [theme])
 
   useEffect(() => {
-    return () => clearInterval(pollRef.current)
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current)
+      activeScanIdRef.current = null
+    }
   }, [])
+
+  async function apiFetch(path, options = {}) {
+    const activeToken = token || (() => { try { return localStorage.getItem('csai-access-token') || '' } catch { return '' } })()
+    const headers = new Headers(options.headers || {})
+    if (activeToken) headers.set('Authorization', `Bearer ${activeToken}`)
+    return fetch(`${API_BASE}${path}`, { ...options, headers })
+  }
+
+  async function refreshAdminData() {
+    setAdminLoading(true)
+    setAdminError('')
+    try {
+      const [usersRes, historyRes] = await Promise.all([
+        apiFetch('/auth/admin/users', { cache: 'no-store' }),
+        apiFetch('/auth/admin/login-history', { cache: 'no-store' }),
+      ])
+
+      if (!usersRes.ok) {
+        const body = await usersRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Users request failed (${usersRes.status})`)
+      }
+      if (!historyRes.ok) {
+        const body = await historyRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Login history request failed (${historyRes.status})`)
+      }
+
+      const [users, history] = await Promise.all([
+        usersRes.json(),
+        historyRes.json(),
+      ])
+      setAdminUsers(Array.isArray(users) ? users : [])
+      setLoginHistory(Array.isArray(history) ? history : [])
+    } catch (err) {
+      setAdminError(err.message || 'Unable to load admin data')
+    } finally {
+      setAdminLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (authView === 'app' && currentUser?.role === 'admin' && activeTab === 'admin') {
+      refreshAdminData()
+    }
+  }, [authView, currentUser, activeTab])
+
+  function formatAdminDate(value) {
+    if (!value) return 'Never'
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+  }
+
+  async function refreshDashboardStats() {
+    try {
+      const res = await apiFetch('/dashboard/stats')
+      if (!res.ok) {
+        throw new Error(`Dashboard stats request failed (${res.status})`)
+      }
+      const data = await res.json()
+      setDashboardStats({
+        total_scans: Number(data.total_scans || 0),
+        last_scan: data.last_scan || null,
+      })
+      setStatsError('')
+    } catch (err) {
+      setStatsError(err.message || 'Unable to load dashboard statistics')
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    async function restoreSession() {
+      if (!token) { setAuthView('login'); return }
+      try {
+        const res = await apiFetch('/auth/me')
+        if (!res.ok) throw new Error('Session expired')
+        const user = await res.json()
+        if (!cancelled) { setCurrentUser(user); setAuthView('app') }
+      } catch {
+        try { localStorage.removeItem('csai-access-token') } catch {}
+        if (!cancelled) { setToken(''); setCurrentUser(null); setAuthView('login') }
+      }
+    }
+    restoreSession()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (authView === 'app' && token) refreshDashboardStats()
+  }, [authView, token])
 
   async function startScan(e) {
     e.preventDefault()
@@ -54,12 +163,15 @@ export default function App() {
       return
     }
 
+    if (pollRef.current) clearTimeout(pollRef.current)
+    activeScanIdRef.current = null
+
     setLoading(true)
     setError('')
     setScan(null)
 
     try {
-      const res = await fetch(`${API_BASE}/scan`, {
+      const res = await apiFetch('/scan', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +187,13 @@ export default function App() {
 
       const data = await res.json()
 
+      if (!data?.id) {
+        throw new Error("Scan API did not return a scan ID")
+      }
+
+      activeScanIdRef.current = String(data.id)
       setScan(data)
+      refreshDashboardStats()
       pollStatus(data.id)
     } catch (err) {
       setError(err.message || 'Unable to start scan')
@@ -84,31 +202,83 @@ export default function App() {
   }
 
   function pollStatus(id) {
-    clearInterval(pollRef.current)
+    const scanId = String(id)
 
-    pollRef.current = setInterval(async () => {
+    if (pollRef.current) clearTimeout(pollRef.current)
+    activeScanIdRef.current = scanId
+
+    const scheduleNextPoll = () => {
+      if (activeScanIdRef.current !== scanId) return
+
+      pollRef.current = setTimeout(() => {
+        fetchLatestStatus()
+      }, 3000)
+    }
+
+    const fetchLatestStatus = async () => {
+      if (activeScanIdRef.current !== scanId) return
+
       try {
-        const res = await fetch(`${API_BASE}/scan/${id}`)
+        const res = await apiFetch(`/scan/${encodeURIComponent(scanId)}`, {
+          cache: 'no-store',
+        })
 
-        if (!res.ok) return
+        if (!res.ok) {
+          const message = `Scan status request failed (${res.status})`
+          console.warn(message)
+
+          // Retry transient API/proxy errors without starting overlapping requests.
+          scheduleNextPoll()
+          return
+        }
 
         const data = await res.json()
+
+        // Ignore responses belonging to an older scan.
+        if (activeScanIdRef.current !== scanId || String(data?.id) !== scanId) {
+          return
+        }
+
         setScan(data)
 
-        if (
-          data.status === 'done' ||
-          data.status === 'failed'
-        ) {
-          clearInterval(pollRef.current)
+        const status = String(data?.status || '').trim().toLowerCase()
+        const isComplete = ['done', 'completed', 'complete', 'success', 'succeeded'].includes(status)
+        const isFailed = ['failed', 'error', 'cancelled', 'canceled'].includes(status)
+
+        if (isComplete || isFailed) {
+          if (pollRef.current) clearTimeout(pollRef.current)
+          pollRef.current = null
+          activeScanIdRef.current = null
           setLoading(false)
+          refreshDashboardStats()
+          return
         }
+
+        scheduleNextPoll()
       } catch (err) {
-        console.error(err)
+        console.error('Unable to fetch scan status:', err)
+        scheduleNextPoll()
       }
-    }, 3000)
+    }
+
+    // Fetch immediately, then continue with sequential 3-second polling.
+    fetchLatestStatus()
   }
 
   const vulnerabilities = scan?.vulnerabilities || []
+  const severityRank = {
+    CRITICAL: 0,
+    HIGH: 1,
+    MEDIUM: 2,
+    LOW: 3,
+    UNKNOWN: 4,
+  }
+  const sortedVulnerabilities = [...vulnerabilities].sort((a, b) => {
+    const severityA = String(a?.severity || 'UNKNOWN').toUpperCase()
+    const severityB = String(b?.severity || 'UNKNOWN').toUpperCase()
+    return (severityRank[severityA] ?? severityRank.UNKNOWN) -
+      (severityRank[severityB] ?? severityRank.UNKNOWN)
+  })
   const secrets = scan?.secrets || []
   const sbom = scan?.sbom_components || []
 
@@ -144,6 +314,148 @@ export default function App() {
     }, 0)
   }
 
+  function handleLogout() {
+    if (pollRef.current) clearTimeout(pollRef.current)
+    activeScanIdRef.current = null
+    try { localStorage.removeItem('csai-access-token') } catch {}
+    setToken('')
+    setCurrentUser(null)
+    setScan(null)
+    setAuthError('')
+    setAuthView('login')
+  }
+
+  async function downloadScanReport() {
+    try {
+      const res = await apiFetch(`/scan/${scan.id}/report`)
+      if (!res.ok) throw new Error(`Report download failed (${res.status})`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `csai-scan-${scan.id}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) { setError(err.message || 'Unable to download report') }
+  }
+
+  if (authView !== 'app') {
+    const isSignup = authView === 'signup'
+    const isForgot = authView === 'forgot'
+
+    async function handleAuthSubmit(event) {
+      event.preventDefault()
+      setAuthError('')
+      if (isForgot) {
+        setAuthError('Password recovery is not available yet. Please contact your administrator.')
+        return
+      }
+      const formData = new FormData(event.currentTarget)
+      const payload = {
+        email: String(formData.get('email') || '').trim(),
+        password: String(formData.get('password') || ''),
+      }
+      if (isSignup) payload.full_name = String(formData.get('full_name') || '').trim()
+      setAuthLoading(true)
+      try {
+        const res = await fetch(`${API_BASE}/auth/${isSignup ? 'signup' : 'login'}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          const detail = data.detail
+          throw new Error(Array.isArray(detail) ? detail.map(item => item.msg).join(', ') : detail || `Authentication failed (${res.status})`)
+        }
+        if (!data.access_token || !data.user) throw new Error('Authentication response is incomplete')
+        try { localStorage.setItem('csai-access-token', data.access_token) } catch {}
+        setToken(data.access_token)
+        setCurrentUser(data.user)
+        setAuthView('app')
+        setAuthError('')
+      } catch (err) {
+        setAuthError(err.message || 'Unable to authenticate')
+      } finally {
+        setAuthLoading(false)
+      }
+    }
+
+    return (
+      <div className="auth-shell" data-theme={theme}>
+        <div className="auth-glow auth-glow-one" />
+        <div className="auth-glow auth-glow-two" />
+        <header className="auth-brand">
+          <div className="brand-shield">🛡</div>
+          <div>
+            <div className="brand-name">ContainerShield <span>AI</span></div>
+            <div className="brand-sub">CONTAINER SECURITY PLATFORM</div>
+          </div>
+        </header>
+
+        <main className="auth-layout">
+          <section className="auth-promo">
+            <div className="auth-eyebrow"><span className="online-dot" /> AI-POWERED CONTAINER SECURITY</div>
+            <h1>Secure every image.<br /><span>Ship with confidence.</span></h1>
+            <p>Find vulnerabilities, exposed secrets and software components before your containers reach production.</p>
+            <div className="auth-feature-list">
+              <div><span>✓</span><div><strong>Deep image scanning</strong><small>Trivy · Grype · Syft · Gitleaks</small></div></div>
+              <div><span>✓</span><div><strong>Actionable security insights</strong><small>Prioritized findings and CVE intelligence</small></div></div>
+              <div><span>✓</span><div><strong>Software bill of materials</strong><small>Know what is inside every image</small></div></div>
+            </div>
+            <div className="auth-promo-foot"><span className="auth-pulse" /> Your container security command center</div>
+          </section>
+
+          <section className="auth-card">
+            <div className="auth-card-top">
+              <div className="auth-card-icon">{isForgot ? '✉' : isSignup ? '＋' : '↗'}</div>
+              <div className="auth-card-kicker">{isForgot ? 'ACCOUNT RECOVERY' : isSignup ? 'GET STARTED' : 'WELCOME BACK'}</div>
+              <h2>{isForgot ? 'Reset your password' : isSignup ? 'Create your account' : 'Sign in to CSAI'}</h2>
+              <p>{isForgot ? 'Enter your email and we’ll send you reset instructions.' : isSignup ? 'Create an account to manage your container security.' : 'Access your security dashboard and scan history.'}</p>
+            </div>
+
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              {isSignup && (
+                <label className="auth-field">
+                  <span>Full name</span>
+                  <input name="full_name" type="text" placeholder="Enter your full name" autoComplete="name" minLength={2} maxLength={120} required />
+                </label>
+              )}
+              <label className="auth-field">
+                <span>Email address</span>
+                <input name="email" type="email" placeholder="you@company.com" autoComplete="email" required />
+              </label>
+              {!isForgot && (
+                <label className="auth-field">
+                  <span>Password</span>
+                  <div className="auth-password-wrap">
+                    <input type={showPassword ? 'text' : 'password'} placeholder="Enter your password" name="password" autoComplete={isSignup ? 'new-password' : 'current-password'} minLength={isSignup ? 10 : 1} required />
+                    <button type="button" className="auth-show-password" onClick={() => setShowPassword(value => !value)}>{showPassword ? 'Hide' : 'Show'}</button>
+                  </div>
+                </label>
+              )}
+              {authError && <div className="auth-inline-error" role="alert">{authError}</div>}
+              <button className="auth-submit" type="submit" disabled={authLoading}>{authLoading ? 'Please wait...' : isForgot ? 'Send reset instructions' : isSignup ? 'Create account' : 'Sign in'} <span>→</span></button>
+            </form>
+
+            {!isForgot && !isSignup && (
+              <div className="auth-forgot-row"><button type="button" onClick={() => { setAuthError(''); setAuthView('forgot') }}>Forgot password?</button></div>
+            )}
+            <div className="auth-switch">
+              {isForgot ? <>Remembered your password? <button type="button" onClick={() => { setAuthError(''); setAuthView('login') }}>Back to sign in</button></>
+                : isSignup ? <>Already have an account? <button type="button" onClick={() => { setAuthError(''); setAuthView('login') }}>Sign in</button></>
+                : <>New to ContainerShield AI? <button type="button" onClick={() => { setAuthError(''); setAuthView('signup') }}>Create an account</button></>}
+            </div>
+            <div className="auth-card-foot"><span>🔒</span> Protected access for your security workspace</div>
+          </section>
+        </main>
+        <footer className="auth-footer">© {new Date().getFullYear()} ContainerShield AI <span>•</span> Docker Security Platform</footer>
+      </div>
+    )
+  }
+
   return (
     <div className="app" data-theme={theme}>
 
@@ -168,7 +480,7 @@ export default function App() {
         </div>
 
         <nav className="navigation">
-          {NAV_ITEMS.map((item) => (
+          {[...NAV_ITEMS, ...(currentUser?.role === 'admin' ? [{ key: 'admin', label: 'Admin Panel', icon: '♙' }] : [])].map((item) => (
             <div
               key={item.key}
               className={`nav-item ${activeTab === item.key ? 'active' : ''}`}
@@ -192,6 +504,10 @@ export default function App() {
           </div>
 
           <div className="sidebar-version">
+            {currentUser?.full_name || currentUser?.email || 'Signed in'}
+          </div>
+          <button type="button" className="download-report" onClick={handleLogout}>Sign out</button>
+          <div className="sidebar-version">
             ContainerShield AI v1.0
           </div>
 
@@ -208,32 +524,6 @@ export default function App() {
       {/* ================= MAIN ================= */}
 
       <main className="main">
-
-        {/* TOP BAR */}
-
-        <header className="topbar">
-
-          <div className="welcome">
-            Welcome to
-          </div>
-
-          <div className="top-actions">
-            <span className="notification">♧</span>
-
-            <div className="user-avatar">
-              YM
-            </div>
-
-            <span className="username">
-              Yash Mishra
-            </span>
-
-            <span className="dropdown">
-              ▾
-            </span>
-          </div>
-
-        </header>
 
         {activeTab === 'dashboard' && (
           <>
@@ -274,32 +564,34 @@ export default function App() {
             <section className="stats-strip">
 
               <div className="stat-block">
-                <div className="stat-block-num">142</div>
+                <div className="stat-block-num">
+                  {dashboardStats.total_scans}
+                </div>
                 <div className="stat-block-lbl">Images Scanned</div>
-                <div className="stat-block-sub">+6 this week</div>
+                <div className="stat-block-sub">
+                  {statsError ? 'Unable to refresh count' : 'Total scans in database'}
+                </div>
               </div>
 
               <div className="stat-block">
                 <div className="stat-block-num bad">
                   {counts.CRITICAL || 0}
                 </div>
-                <div className="stat-block-lbl">Critical Vulns Open</div>
-                <div className="stat-block-sub">from last scan</div>
-              </div>
-
-              <div className="stat-block">
-                <div className="stat-block-num good">96%</div>
-                <div className="stat-block-lbl">Avg. Scan Success</div>
-                <div className="stat-block-sub">Last 30 days</div>
+                <div className="stat-block-lbl">Critical Vulns</div>
+                <div className="stat-block-sub">from current scan</div>
               </div>
 
               <div className="stat-block">
                 <div className="stat-block-num">
-                  {scan ? scan.image_name : '—'}
+                  {dashboardStats.last_scan?.image_name || '—'}
                 </div>
-                <div className="stat-block-lbl">Last Scan</div>
+                <div className="stat-block-lbl">Last Scanned Image</div>
                 <div className="stat-block-sub">
-                  {scan ? scan.status : 'no scans yet'}
+                  {dashboardStats.last_scan
+                    ? `${dashboardStats.last_scan.status || 'unknown'}${dashboardStats.last_scan.created_at
+                      ? ` · ${new Date(dashboardStats.last_scan.created_at).toLocaleString()}`
+                      : ''}`
+                    : 'no scans yet'}
                 </div>
               </div>
 
@@ -373,20 +665,31 @@ export default function App() {
                   <div className="scan-progress-heading">
                     <span className="loading-spinner" aria-hidden="true" />
                     <div>
-                      <strong>Security scan in progress</strong>
+                      <strong>Overall Scan Progress</strong>
                       <p>Scanning <b>{imageName.trim()}</b>. Large images may take a few minutes.</p>
                     </div>
                   </div>
-                  <div className="progress-track" aria-label="Scan is running; exact percentage is not provided by the backend">
-                    <span className="progress-indeterminate" />
+
+                  <div className="progress-meta">
+                    <span>{scan?.current_stage || 'Preparing scan...'}</span>
+                    <strong>{Math.min(100, Math.max(0, Number(scan?.progress ?? 0)))}%</strong>
                   </div>
-                  <div className="pipeline-list">
-                    <span className="pipeline-pill active"><i /> Trivy</span>
-                    <span className="pipeline-pill active"><i /> Grype</span>
-                    <span className="pipeline-pill active"><i /> Gitleaks</span>
-                    <span className="pipeline-pill active"><i /> Syft</span>
+
+                  <div
+                    className="progress-track"
+                    role="progressbar"
+                    aria-label="Overall scan progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.min(100, Math.max(0, Number(scan?.progress ?? 0)))}
+                  >
+                    <span
+                      className="progress-fill"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, Number(scan?.progress ?? 0)))}%`
+                      }}
+                    />
                   </div>
-                  <p className="progress-note">The API currently reports overall scan status, not per-tool completion or a real percentage. This indicator is intentionally indeterminate rather than showing a made-up progress value.</p>
                 </div>
               )}
 
@@ -704,15 +1007,7 @@ export default function App() {
 
                         </div>
 
-                        <button
-                          className="download-report"
-                          onClick={() =>
-                            window.open(
-                              `${API_BASE}/scan/${scan.id}/report`,
-                              '_blank'
-                            )
-                          }
-                        >
+                        <button className="download-report" onClick={downloadScanReport}>
                           ↓ &nbsp; Download PDF Report
                         </button>
 
@@ -785,14 +1080,25 @@ export default function App() {
 
                             <tbody>
 
-                              {vulnerabilities
+                              {sortedVulnerabilities
                                 .slice(0, 50)
                                 .map((v, i) => (
 
                                   <tr key={i}>
 
                                     <td className="cve">
-                                      {v.cve_id || '-'}
+                                      {v.cve_id && /^CVE-\d{4}-\d+$/i.test(v.cve_id) ? (
+                                        <a
+                                          href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(v.cve_id)}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title="View on NVD"
+                                        >
+                                          {v.cve_id}
+                                        </a>
+                                      ) : (
+                                        v.cve_id || '-'
+                                      )}
                                     </td>
 
                                     <td>
@@ -1028,9 +1334,22 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {vulnerabilities.slice(0, 50).map((v, i) => (
+                    {sortedVulnerabilities.slice(0, 50).map((v, i) => (
                       <tr key={i}>
-                        <td className="cve">{v.cve_id || '-'}</td>
+                        <td className="cve">
+                          {v.cve_id && /^CVE-\d{4}-\d+$/i.test(v.cve_id) ? (
+                            <a
+                              href={`https://nvd.nist.gov/vuln/detail/${encodeURIComponent(v.cve_id)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="View on NVD"
+                            >
+                              {v.cve_id}
+                            </a>
+                          ) : (
+                            v.cve_id || '-'
+                          )}
+                        </td>
                         <td>{v.package || '-'}</td>
                         <td>
                           <span className={`severity sev-${v.severity || 'UNKNOWN'}`}>
@@ -1099,6 +1418,111 @@ export default function App() {
             <div className="ready-icon">⚙</div>
             <h3>Settings</h3>
             <p>Nothing configurable yet — add your app settings here.</p>
+          </section>
+        )}
+
+        {activeTab === 'admin' && currentUser?.role === 'admin' && (
+          <section className="admin-page">
+            <div className="admin-page-heading">
+              <div>
+                <div className="small-label">ADMINISTRATION</div>
+                <h1>User Management</h1>
+                <p>Registered accounts, scan usage and successful sign-in activity.</p>
+              </div>
+              <button
+                type="button"
+                className="download-report"
+                onClick={refreshAdminData}
+                disabled={adminLoading}
+              >
+                {adminLoading ? 'Refreshing...' : '↻ Refresh'}
+              </button>
+            </div>
+
+            {adminError && <div className="scan-error" role="alert">{adminError}</div>}
+
+            <div className="admin-summary-grid">
+              <div className="admin-summary-card">
+                <span>Total users</span>
+                <strong>{adminUsers.length}</strong>
+              </div>
+              <div className="admin-summary-card">
+                <span>Administrators</span>
+                <strong>{adminUsers.filter(user => user.role === 'admin').length}</strong>
+              </div>
+              <div className="admin-summary-card">
+                <span>Regular users</span>
+                <strong>{adminUsers.filter(user => user.role !== 'admin').length}</strong>
+              </div>
+              <div className="admin-summary-card">
+                <span>Total scans</span>
+                <strong>{adminUsers.reduce((sum, user) => sum + Number(user.scan_count || 0), 0)}</strong>
+              </div>
+            </div>
+
+            <section className="panel admin-panel-section">
+              <div className="panel-title">♙ Registered Users</div>
+              {adminLoading && adminUsers.length === 0 ? (
+                <div className="no-data">Loading users...</div>
+              ) : adminUsers.length === 0 ? (
+                <div className="no-data">No users found.</div>
+              ) : (
+                <div className="table-scroll">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>User</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Scans</th>
+                        <th>Joined</th>
+                        <th>Last login</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminUsers.map(user => (
+                        <tr key={user.id}>
+                          <td>{user.full_name}</td>
+                          <td>{user.email}</td>
+                          <td><span className={`admin-role ${user.role === 'admin' ? 'is-admin' : ''}`}>{user.role}</span></td>
+                          <td>{user.is_active ? 'Active' : 'Disabled'}</td>
+                          <td>{Number(user.scan_count || 0)}</td>
+                          <td>{formatAdminDate(user.created_at)}</td>
+                          <td>{formatAdminDate(user.last_login_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section className="panel admin-panel-section">
+              <div className="panel-title">◷ Recent Successful Logins</div>
+              {loginHistory.length === 0 ? (
+                <div className="no-data">
+                  No login events yet. New successful logins will appear here.
+                </div>
+              ) : (
+                <div className="table-scroll">
+                  <table className="admin-table">
+                    <thead>
+                      <tr><th>User</th><th>Email</th><th>Login time</th></tr>
+                    </thead>
+                    <tbody>
+                      {loginHistory.map((entry, index) => (
+                        <tr key={`${entry.email}-${entry.logged_in_at}-${index}`}>
+                          <td>{entry.full_name}</td>
+                          <td>{entry.email}</td>
+                          <td>{formatAdminDate(entry.logged_in_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           </section>
         )}
 
