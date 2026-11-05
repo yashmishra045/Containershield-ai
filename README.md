@@ -29,12 +29,9 @@ It integrates multiple open-source security scanners into a unified dashboard, h
 
 ### 1. ContainerShield AI – Dashboard
 
-![ContainerShield AI Dashboard](docs/images/csai-1.png)
+![ContainerShield AI Dashboard](csai-1.png)
 
-### 2. Vulnerability Analysis & Security Report
-
-![ContainerShield AI Vulnerability Analysis](docs/images/csai-2.png)
-
+![ContainerShield AI Vulnerability Analysis](csai-2.png)
 ---
 
 ## 🚀 Key Features
