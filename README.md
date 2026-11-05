@@ -1,109 +1,230 @@
-# 🛡️ ContainerShield AI
+# 🛡️ ContainerShield AI (CSAI)
 
-**An intelligent Docker image security scanner with vulnerability detection, secret scanning, SBOM generation, and AI-assisted remediation.**
+### Container Security & Vulnerability Scanning Platform
 
-ContainerShield AI scans any Docker image and gives you a single, unified view of its security posture — CVEs, exposed secrets, and a full software bill of materials — with a clean dashboard and downloadable PDF reports.
+**ContainerShield AI** is a DevSecOps security platform designed to scan Docker images, identify vulnerabilities, detect exposed secrets, generate Software Bill of Materials (SBOM), and provide centralized container security insights.
 
----
-
-## ✨ Features
-
-- 🔍 **Vulnerability scanning** — cross-checked using both **Trivy** and **Grype**, deduplicated into a single results list
-- 🔑 **Secret detection** — scans the image filesystem for exposed credentials, API keys, and tokens using **Gitleaks**
-- 📦 **SBOM generation** — full software bill of materials via **Syft**
-- 📊 **Risk scoring** — weighted 0–100 score based on vulnerability severity
-- 🖥️ **Live dashboard** — React-based UI with real-time scan status and severity breakdown charts
-- 📄 **PDF reports** — one-click downloadable security reports
-- 🤖 **Planned:** AI-based remediation suggestions, CIS Docker Benchmark checks, scan history & trends, CI/CD integration
-
----
-
-## 🖥️ Dashboard Preview
+It integrates multiple open-source security scanners into a unified dashboard, helping developers and DevOps engineers understand and improve container security.
 
 <p align="center">
-  <a href="https://drive.google.com/file/d/1lS4XkI1r2IPgIjD6iBFGmB9ss6Yo6UMz/view?usp=drivesdk" target="_blank">
-    <img src="frontend/dashboard-image.jpeg" alt="ContainerShield AI dashboard showing a scan of nginx:latest with a risk score of 100/100 and a vulnerability severity breakdown" width="800">
+  <a href="https://csai.duckdns.org">
+    <img src="https://img.shields.io/badge/Live%20Demo-Visit%20ContainerShield%20AI-2563EB?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Live Demo"/>
+  </a>
+  <a href="https://github.com/yashmishra045/Containershield-ai">
+    <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github" alt="GitHub Repository"/>
   </a>
 </p>
 
-<p align="center">
-  <sub>Scan results for <code>nginx:latest</code> — risk score, severity breakdown, and per-CVE detail. <a target="_blank" href="https://drive.google.com/file/d/1lS4XkI1r2IPgIjD6iBFGmB9ss6Yo6UMz/view?usp=drivesdk">View full size ↗</a></sub>
-</p>
+---
+
+## 🌐 Live Application
+
+**Try ContainerShield AI:** https://csai.duckdns.org
+
+> The live application is hosted on AWS EC2. Availability depends on the production server being online.
 
 ---
 
-## 🔧 Security Tools Used
+## 📸 Project Screenshots
 
-ContainerShield AI orchestrates four industry-standard, open-source security scanners under one roof, and combines their output into a single normalized report:
+### 1. ContainerShield AI – Dashboard
 
-### 🩹 [Trivy](https://aquasecurity.github.io/trivy/) — Vulnerability Scanner
-Developed by Aqua Security, Trivy scans container images layer-by-layer against known CVE databases to detect vulnerable OS packages and application dependencies. It's fast, widely adopted in production CI/CD pipelines, and covers a broad range of package managers (apt, yum, npm, pip, etc.).
+![ContainerShield AI Dashboard](docs/images/csai-1.png)
 
-### 🕵️ [Grype](https://github.com/anchore/grype) — Cross-Check Vulnerability Scanner
-Built by Anchore, Grype is run alongside Trivy as a second, independent vulnerability scanner. Different tools use different vulnerability databases and matching logic, so running both and deduplicating results reduces false negatives and gives more confidence in the final CVE list.
+### 2. Vulnerability Analysis & Security Report
 
-### 🔑 [Gitleaks](https://github.com/gitleaks/gitleaks) — Secret Scanner
-Gitleaks scans the image's exported filesystem for hardcoded secrets — API keys, access tokens, private keys, database credentials, and other sensitive strings accidentally baked into an image during build. Catching these before deployment prevents credential leaks in production.
-
-### 📦 [Syft](https://github.com/anchore/syft) — SBOM Generator
-Also from Anchore, Syft generates a Software Bill of Materials (SBOM) — a complete inventory of every package, library, and component inside the image, along with their versions. This is essential for supply-chain security and compliance (e.g. knowing exactly what's running before the next CVE drops).
-
-**Why four tools instead of one?** Each tool has a different focus and different blind spots. Running them together and merging the results gives a far more complete security picture than any single scanner alone — which is the whole premise of ContainerShield AI.
+![ContainerShield AI Vulnerability Analysis](docs/images/csai-2.png)
 
 ---
 
-## 🏗️ Tech Stack
+## 🚀 Key Features
 
-| Layer | Technology |
+- **Docker Image Scanning:** Scan Docker images for known security vulnerabilities.
+- **Multi-Scanner Integration:** Integrates Trivy and Grype for vulnerability analysis.
+- **SBOM Generation:** Generates Software Bill of Materials using Syft.
+- **Secret Detection:** Detects potentially exposed credentials and secrets using Gitleaks.
+- **Vulnerability Classification:** Categorizes findings into Critical, High, Medium, and Low severity levels.
+- **Security Dashboard:** Displays vulnerability breakdowns and security insights.
+- **Scan History:** Stores and tracks previous scan results.
+- **Live Scan Progress:** Displays scan status and progress information.
+- **Authentication:** Provides authenticated access to the application.
+- **Admin Panel:** Provides administrative functionality and access management.
+- **Security Reports:** Supports downloadable scan reports.
+- **Database Integration:** Stores application and scan information in PostgreSQL.
+
+---
+
+## 🧰 Technology Stack
+
+| Category | Technologies |
 |---|---|
-| Backend | FastAPI (Python) |
-| Frontend | React + Vite |
+| Frontend | React.js, JavaScript, CSS |
+| Backend | Python, FastAPI |
 | Database | PostgreSQL |
-| Reports | ReportLab (PDF) |
-| Scanning Engines | Trivy, Grype, Gitleaks, Syft |
-| Infrastructure | Docker & Docker Compose |
+| ORM | SQLAlchemy |
+| Containerization | Docker |
+| Container Orchestration | Docker Compose |
+| Reverse Proxy | Nginx |
+| Vulnerability Scanning | Trivy, Grype |
+| SBOM Generation | Syft |
+| Secret Detection | Gitleaks |
+| Cloud Platform | AWS EC2 |
+| CI/CD | GitHub Actions |
+| Version Control | Git & GitHub |
 
 ---
 
-## 🚀 Quick Start
+## 🔍 Integrated Security Tools
+
+### Trivy
+Scans container images for operating system and application dependency vulnerabilities.
+
+### Grype
+Identifies known vulnerabilities in packages and container images.
+
+### Syft
+Generates Software Bill of Materials (SBOM), providing visibility into software packages and components.
+
+### Gitleaks
+Scans for exposed secrets, API keys, passwords, and credentials.
+
+---
+
+## 🏗️ System Architecture
+
+```text
+                  USER
+                    |
+                    v
+             React Frontend
+                    |
+                    v
+                NGINX
+                    |
+                    v
+             FastAPI Backend
+                    |
+          +---------+---------+
+          |         |         |
+          v         v         v
+        Trivy     Grype    Gitleaks
+          |         |         |
+          +---------+---------+
+                    |
+                    v
+                   Syft
+                    |
+                    v
+             Scan Result Processing
+                    |
+                    v
+               PostgreSQL
+                    |
+                    v
+             Security Dashboard
+```
+
+---
+
+## ⚙️ Application Workflow
+
+1. User accesses the ContainerShield AI dashboard.
+2. User submits a Docker image name.
+3. FastAPI receives the scanning request.
+4. Backend executes the integrated security scanners.
+5. Trivy and Grype identify vulnerabilities.
+6. Syft generates the SBOM.
+7. Gitleaks checks for exposed secrets.
+8. Scan results are processed and stored in PostgreSQL.
+9. Dashboard displays vulnerability statistics and scan results.
+10. Users can review scan history and download reports.
+
+---
+
+## ☁️ Cloud Deployment
+
+ContainerShield AI is deployed on an **AWS EC2 Ubuntu instance** using Docker Compose.
+
+Deployment components:
+
+- AWS EC2 – Cloud hosting infrastructure
+- Ubuntu – Server operating system
+- Docker – Application containerization
+- Docker Compose – Multi-container management
+- Nginx – Frontend hosting and reverse proxy
+- FastAPI – Backend API service
+- PostgreSQL – Persistent database
+
+**Live URL:** https://csai.duckdns.org
+
+---
+
+## 🖥️ Run Locally
 
 ### Prerequisites
-- Docker + Docker Compose
-- Node.js 18+ (only needed for local frontend development)
 
-The backend Docker image installs Trivy, Grype, Syft, and Gitleaks automatically — no need to install any scanner tools on your host.
+- Python 3.x
+- Node.js and npm
+- Docker
+- Docker Compose
+- Git
 
-### Run everything with Docker
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/yashmishra045/Containershield-ai.git
+
 cd Containershield-ai
-docker compose up --build
 ```
 
-This starts:
-- **PostgreSQL** on `localhost:5432`
-- **Backend (FastAPI)** on `http://localhost:8000`
+### 2. Configure Environment Variables
 
-> The backend container mounts your host's Docker socket (`/var/run/docker.sock`) so it can pull and inspect the images you scan.
+Create the required `.env` file using the environment variables expected by the application.
 
-### Run the frontend
+Keep database credentials, JWT secrets, and other sensitive configuration out of Git.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
 
-Open `http://localhost:5173`, enter an image name (e.g. `nginx:latest`), and hit **Scan Image**.
+## 🔐 Security Considerations
+
+- Authenticated application access.
+- Secure handling of environment variables.
+- Container image vulnerability analysis.
+- Secret detection through Gitleaks.
+- SBOM generation for software component visibility.
+- Role-based access management.
 
 ---
 
-## 🧩 Running the backend without Docker
+## 🔮 Future Enhancements
 
-1. Run Postgres locally, or just: `docker compose up db`
-2. Install the scanner tools on your machine:
-   - [Trivy](https://aquasecurity.github.io/trivy/latest/getting-started/installation/)
-   - [Grype](https://github.com/anchore/grype#installation)
-   - [Syft](https://github.com/anchore/syft#installation)
-   - [Gitleaks](https://github.com/gitleaks/gitleaks#installing)
+- AI-powered vulnerability explanations.
+- Automated vulnerability remediation recommendations.
+- GitHub repository security auditing.
+- Advanced CI/CD security integration.
+- Policy-based security enforcement.
+- Scalable queue-based scanning.
+- Advanced security analytics.
+- Unified DevSecOps Security Suite integrating container and source-code security.
+
+---
+
+## 👨‍💻 Author
+
+**Prashant Mishra**
+**Aman Mishra**
+**Yash Mishra**
+
+
+B.Tech – Information Technology
+
+- GitHub: https://github.com/yashmishra045
+- Project: https://github.com/yashmishra045/Containershield-ai
+- Live Application: https://csai.duckdns.org
+
+---
+
+## ⭐ Support
+
+If you find ContainerShield AI useful, consider giving this repository a ⭐ on GitHub.
+
+**ContainerShield AI – Making Container Security Smarter.**
