@@ -207,8 +207,8 @@ Keep database credentials, JWT secrets, and other sensitive configuration out of
 
 ## 👨‍💻 Author
 
-**Prashant Mishra**
-**Aman Mishra**
+**Prashant Mishra**|
+**Aman Mishra**|
 **Yash Mishra**
 
 
