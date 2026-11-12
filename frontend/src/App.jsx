@@ -46,6 +46,9 @@ export default function App() {
   const [imageName, setImageName] = useState('nginx:latest')
   const [scan, setScan] = useState(null)
   const [dashboardStats, setDashboardStats] = useState({ total_scans: 0, last_scan: null })
+  const [scanHistory, setScanHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
   const [statsError, setStatsError] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -109,12 +112,42 @@ export default function App() {
       refreshAdminData()
     }
   }, [authView, currentUser, activeTab])
-
+    useEffect(() => {
+    if (authView === 'app' && activeTab === 'history' && token) {
+      refreshScanHistory()
+    }
+  }, [authView, activeTab, token])
   function formatAdminDate(value) {
     if (!value) return 'Never'
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
   }
+  function formatScanDate(value) {
+  if (!value) return '—'
+
+  const timestamp =
+    typeof value === 'string' &&
+    !/(Z|[+-]\d{2}:\d{2})$/i.test(value)
+      ? `${value}Z`
+      : value
+
+  const date = new Date(timestamp)
+
+  if (Number.isNaN(date.getTime())) return '—'
+
+  const formatted = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(date)
+
+  return `${formatted} IST`
+}
 
   async function refreshDashboardStats() {
     try {
@@ -132,7 +165,30 @@ export default function App() {
       setStatsError(err.message || 'Unable to load dashboard statistics')
     }
   }
+async function refreshScanHistory() {
+  setHistoryLoading(true)
+  setHistoryError('')
 
+  try {
+    const res = await apiFetch('/scans', { cache: 'no-store' })
+
+    if (!res.ok) {
+      throw new Error(`Scan history request failed (${res.status})`)
+    }
+
+    const data = await res.json()
+
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid scan history response')
+    }
+
+    setScanHistory(data)
+  } catch (err) {
+    setHistoryError(err.message || 'Unable to load scan history')
+  } finally {
+    setHistoryLoading(false)
+  }
+}
   useEffect(() => {
     let cancelled = false
     async function restoreSession() {
@@ -1406,12 +1462,82 @@ export default function App() {
         )}
 
         {activeTab === 'history' && (
-          <section className="ready-card">
-            <div className="ready-icon">◷</div>
-            <h3>Scan History</h3>
-            <p>Hook this up to a GET /api/scans endpoint to list past scans here.</p>
-          </section>
-        )}
+  <section className="admin-page">
+    <div className="history-page-heading">
+      <div>
+        <div className="small-label">SCAN MANAGEMENT</div>
+        <h1>Scan History</h1>
+        <p>View your previous container image scans.</p>
+      </div>
+
+      <button
+        type="button"
+        className="history-refresh-button"
+        onClick={refreshScanHistory}
+        disabled={historyLoading}
+      >
+        {historyLoading ? 'Refreshing...' : '↻ Refresh'}
+      </button>
+    </div>
+
+    {historyLoading && (
+      <div className="ready-card">
+        <p>Loading scan history...</p>
+      </div>
+    )}
+
+    {historyError && (
+      <div className="ready-card">
+        <p>{historyError}</p>
+        <button type="button" onClick={refreshScanHistory}>
+          Try Again
+        </button>
+      </div>
+    )}
+
+    {!historyLoading && !historyError && scanHistory.length === 0 && (
+      <div className="ready-card">
+        <div className="ready-icon">◷</div>
+        <h3>No scans yet</h3>
+        <p>Your completed and ongoing scans will appear here.</p>
+      </div>
+    )}
+
+    {!historyLoading && !historyError && scanHistory.length > 0 && (
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Container Image</th>
+              <th>Status</th>
+              <th>Progress</th>
+              <th>Risk Score</th>
+              <th>Started At</th>
+              <th>Completed At</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {scanHistory.map((scan) => (
+              <tr key={scan.id}>
+                <td>{scan.image_name}</td>
+                <td>{scan.status}</td>
+                <td>{scan.progress ?? 0}%</td>
+                <td>{scan.risk_score ?? 0}</td>
+                <td>{formatScanDate(scan.created_at)}</td>
+                <td>
+                  {scan.completed_at
+                    ? formatScanDate(scan.completed_at)
+                    : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </section>
+)}
 
         {activeTab === 'settings' && (
           <section className="ready-card">
