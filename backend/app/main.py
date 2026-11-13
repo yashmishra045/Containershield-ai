@@ -28,6 +28,8 @@ from .database import Base, engine, get_db
 
 from .auth import router as auth_router, get_current_user
 
+from .slack_notifications import send_slack_notification, format_ist_timestamp
+
 # Create tables (development use). create_all does NOT add columns to existing tables;
 
 # run the supplied SQL migration once against an existing database.
@@ -183,6 +185,16 @@ def _execute_scan(scan_id: uuid.UUID):
         image_name = scan.image_name
 
         print(f"[SCAN] Started: {scan_id} | Image: {image_name}", flush=True)
+        send_slack_notification(
+            title="🔵 Scan Started",
+            message=(
+                f"*Image:* `{image_name}`\n"
+                f"*Scan ID:* `{scan_id}`\n"
+                f"*Status:* Running\n"
+                f"*Time:* {format_ist_timestamp()}"
+            ),
+            color="#2196F3",
+        )
 
         def update_progress(percent: int, stage: str):
 
@@ -349,7 +361,95 @@ def _execute_scan(scan_id: uuid.UUID):
         db.commit()
 
         print(f"[SCAN] Completed: {scan_id}", flush=True)
+        severity_counts = {
+            "CRITICAL": 0,
+            "HIGH": 0,
+            "MEDIUM": 0,
+            "LOW": 0,
+            "UNKNOWN": 0,
+        }
 
+        for item in result.get("vulnerabilities", []):
+            severity = str(item.get("severity") or "UNKNOWN").upper()
+
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+            else:
+                severity_counts["UNKNOWN"] += 1
+
+        total_vulnerabilities = len(result.get("vulnerabilities", []))
+
+        is_partial_scan = bool(scanner_errors)
+
+        scan_status_label = (
+            "Partially Completed" if is_partial_scan else "Completed"
+        )
+
+        notification_title = (
+            "WARNING: Scan Partially Completed"
+            if is_partial_scan
+            else "SUCCESS: Scan Completed"
+        )
+
+        notification_color = (
+            "#ff9800" if is_partial_scan else "#36a64f"
+        )
+
+        send_slack_notification(
+            title=notification_title,
+            message=(
+                f"*Image:* `{image_name}`\n"
+                f"*Status:* {scan_status_label}\n"
+                f"*Risk Score:* {scan.risk_score}/100\n"
+                f"*Total Vulnerabilities:* {total_vulnerabilities}\n"
+                f"*Critical:* {severity_counts['CRITICAL']}\n"
+                f"*High:* {severity_counts['HIGH']}\n"
+                f"*Medium:* {severity_counts['MEDIUM']}\n"
+                f"*Low:* {severity_counts['LOW']}\n"
+                f"*Scanner Errors:* {len(scanner_errors)}\n"
+                f"*Time:* {format_ist_timestamp(scan.completed_at)}"
+            ),
+            color=notification_color,
+        )
+        if severity_counts["CRITICAL"] > 0:
+            send_slack_notification(
+                title="🚨 Critical Vulnerabilities Detected",
+                message=(
+                    f"*Image:* `{image_name}`\n"
+                    f"*Critical Vulnerabilities:* {severity_counts['CRITICAL']}\n"
+                    f"*High Vulnerabilities:* {severity_counts['HIGH']}\n"
+                    f"*Risk Score:* {scan.risk_score}/100\n"
+                    f"*Action:* Immediate security review recommended.\n"
+                    f"*Time:* {format_ist_timestamp(scan.completed_at)}"
+                ),
+                color="#dc2626",
+            )
+        if scan.risk_score >= 80:
+            send_slack_notification(
+                title="⚠️ High Risk Score Detected",
+                message=(
+                    f"*Image:* `{image_name}`\n"
+                    f"*Risk Score:* {scan.risk_score}/100\n"
+                    f"*Critical:* {severity_counts['CRITICAL']}\n"
+                    f"*High:* {severity_counts['HIGH']}\n"
+                    f"*Action:* Security review recommended.\n"
+                    f"*Time:* {format_ist_timestamp(scan.completed_at)}"
+                ),
+                color="#ff9800",
+            )
+        if total_vulnerabilities == 0:
+            send_slack_notification(
+                title="🛡️ No Vulnerabilities Found",
+                message=(
+                    f"*Image:* `{image_name}`\n"
+                    f"*Status:* Completed\n"
+                    f"*Vulnerabilities:* 0\n"
+                    f"*Risk Score:* {scan.risk_score}/100\n"
+                    f"*Security Status:* No known vulnerabilities detected.\n"
+                    f"*Time:* {format_ist_timestamp(scan.completed_at)}"
+                ),
+                color="#2eb886",
+            )
     except Exception as exc:
 
         if db is not None:
@@ -383,6 +483,17 @@ def _execute_scan(scan_id: uuid.UUID):
                     failed_scan.completed_at = datetime.utcnow()
 
                     db.commit()
+
+                    send_slack_notification(
+                        title="❌ Scan Failed",
+                        message=(
+                            f"*Image:* `{failed_scan.image_name}`\n"
+                            f"*Status:* Failed\n"
+                            f"*Error:* Scan pipeline encountered an error. Check backend logs for details.\n"
+                            f"*Time:* {format_ist_timestamp(failed_scan.completed_at)}"
+                        ),
+                        color="#dc2626",
+                    )
 
             except Exception:
 
@@ -566,6 +677,18 @@ def download_report(scan_id: uuid.UUID, db: Session = Depends(get_db), current_u
 
         scan.sbom_components,
 
+    )
+
+    send_slack_notification(
+        title="📄 Scan Report Generated",
+        message=(
+            f"*Image:* `{scan.image_name}`\n"
+            f"*Scan ID:* `{scan.id}`\n"
+            f"*Status:* Report generated successfully\n"
+            f"*Risk Score:* {scan.risk_score}/100\n"
+            f"*Time:* {format_ist_timestamp()}"
+        ),
+        color="#2196F3",
     )
 
     filename = f"containershield-report-{scan.id}.pdf"
