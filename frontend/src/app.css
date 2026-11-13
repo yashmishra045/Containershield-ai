@@ -437,7 +437,14 @@ body {
   margin-bottom: 14px;
 
 }
-
+/* Dashboard Welcome Message */
+.hero-welcome {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 14px;
+  letter-spacing: 0.3px;
+}
 .hero-eyebrow-dot {
 
   width: 6px;

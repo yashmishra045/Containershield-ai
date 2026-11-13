@@ -593,7 +593,9 @@ async function refreshScanHistory() {
                   <span className="hero-eyebrow-dot"></span>
                   AI-Powered Container Security
                 </div>
-
+              <div className="hero-welcome">
+                Welcome, {currentUser?.full_name || 'User'}!
+             </div>
                 <h1 className="hero-headline">
                   Secure your container images
                   <br />
