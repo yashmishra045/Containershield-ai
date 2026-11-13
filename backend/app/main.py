@@ -566,13 +566,24 @@ def create_scan(
     )
 
     db.add(scan)
+    db.commit()
+    db.refresh(scan)
+
+    # Keep only the latest 5 scans for this user
+    old_scans = (
+        db.query(models.Scan)
+        .filter(models.Scan.user_id == current_user.id)
+        .order_by(models.Scan.created_at.desc(), models.Scan.id.desc())
+        .offset(5)
+        .all()
+    )
+
+    for old_scan in old_scans:
+        db.delete(old_scan)
 
     db.commit()
 
-    db.refresh(scan)
-
     background_tasks.add_task(_execute_scan, scan.id)
-
     return scan
 
 @app.get("/scan/{scan_id}", response_model=schemas.ScanDetailOut)
@@ -597,7 +608,7 @@ def list_scans(db: Session = Depends(get_db), current_user: models.User = Depend
 
         .order_by(models.Scan.created_at.desc())
 
-        .limit(50)
+        .limit(5)
 
         .all()
 

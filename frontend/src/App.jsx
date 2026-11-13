@@ -381,21 +381,35 @@ async function refreshScanHistory() {
     setAuthView('login')
   }
 
-  async function downloadScanReport() {
-    try {
-      const res = await apiFetch(`/scan/${scan.id}/report`)
-      if (!res.ok) throw new Error(`Report download failed (${res.status})`)
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `csai-scan-${scan.id}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
-    } catch (err) { setError(err.message || 'Unable to download report') }
+  async function downloadScanReport(scanId = scan?.id) {
+  if (!scanId) {
+    setError('No scan selected')
+    return
   }
+
+  try {
+    const res = await apiFetch(`/scan/${scanId}/report`)
+
+    if (!res.ok) {
+      throw new Error(`Report download failed (${res.status})`)
+    }
+
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+
+    link.href = url
+    link.download = `csai-scan-${scanId}.pdf`
+
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    setError(err.message || 'Unable to download report')
+  }
+}
 
   if (authView !== 'app') {
     const isSignup = authView === 'signup'
@@ -1516,6 +1530,7 @@ async function refreshScanHistory() {
               <th>Risk Score</th>
               <th>Started At</th>
               <th>Completed At</th>
+              <th>Action</th>
             </tr>
           </thead>
 
@@ -1532,6 +1547,18 @@ async function refreshScanHistory() {
                     ? formatScanDate(scan.completed_at)
                     : '—'}
                 </td>
+                <td>
+  {['completed', 'done'].includes(scan.status?.toLowerCase()) ? (
+    <button
+      className="history-download-button"
+      onClick={() => downloadScanReport(scan.id)}
+    >
+      Download PDF
+    </button>
+  ) : (
+    '—'
+  )}
+</td>
               </tr>
             ))}
           </tbody>

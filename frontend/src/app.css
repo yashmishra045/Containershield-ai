@@ -1366,7 +1366,27 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
 }
+/* Scan History Download Button */
+.history-download-button {
+  padding: 8px 12px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
 
+.history-download-button:hover {
+  opacity: 0.85;
+}
+
+.history-download-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 /* ================= RESULTS PANEL / TABS / TABLES ================= */
 
 .results-panel {
