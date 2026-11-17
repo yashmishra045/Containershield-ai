@@ -80,15 +80,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Validate Docker Compose configuration using CI-only credentials
+      # Validate Docker Compose using CI-only credentials
       - name: Validate Docker Compose configuration
-        run: docker compose config --quiet
         env:
           POSTGRES_USER: ci_user
           POSTGRES_PASSWORD: ci_validation_password
           POSTGRES_DB: ci_database
           DATABASE_URL: postgresql://ci_user:ci_validation_password@db:5432/ci_database
           SECRET_KEY: ci_validation_only_secret
+          SLACK_WEBHOOK_URL: ""
+        run: docker compose config --quiet
 
       - name: Build backend image
         run: |
@@ -96,8 +97,7 @@ jobs:
             -t csai-backend:${{ github.sha }} \
             ./backend
 
-      # Trivy reports findings but does not fail on vulnerability
-      # findings in this diagnostic configuration.
+      # Trivy reports vulnerabilities without blocking this diagnostic pipeline.
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -118,7 +118,7 @@ jobs:
           fail-build: true
           severity-cutoff: high
 
-      # Generate a Software Bill of Materials.
+      # Generate Software Bill of Materials.
       - name: Generate backend SBOM with Syft
         uses: anchore/sbom-action@v0
         with:
