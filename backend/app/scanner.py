@@ -97,15 +97,17 @@ def run_trivy(image_name: str) -> dict[str, Any]:
         print(f"[TRIVY] Cache lock acquired: {image_name}")
 
         out, _, _ = _run(
-            [
+                    [
                 "trivy",
                 "image",
+                "--timeout",
+                "15m",
                 "--format",
                 "json",
                 "--quiet",
                 image_name,
             ],
-            timeout=900,
+            timeout=1200,
         )
 
         print(f"[TRIVY] Scan command completed: {image_name}")
