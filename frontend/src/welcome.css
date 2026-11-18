@@ -1,0 +1,141 @@
+
+.welcome-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(42, 91, 190, 0.2), transparent 35%),
+    radial-gradient(circle at 85% 80%, rgba(94, 55, 190, 0.18), transparent 35%),
+    #070b14;
+  color: #e7ecf8;
+  font-family: Inter, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.welcome-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 7%;
+}
+
+.welcome-logo {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.welcome-logo span {
+  color: #5b8cff;
+}
+
+.nav-button {
+  padding: 11px 25px;
+  border: 1px solid #385baf;
+  border-radius: 9px;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+}
+
+.welcome-content {
+  width: min(900px, 90%);
+  margin: auto;
+  text-align: center;
+  padding: 65px 0;
+}
+
+.welcome-badge {
+  display: inline-block;
+  padding: 9px 16px;
+  border: 1px solid rgba(91, 140, 255, 0.35);
+  border-radius: 30px;
+  color: #8eacff;
+  background: rgba(91, 140, 255, 0.1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.welcome-content h1 {
+  max-width: 850px;
+  margin: 28px auto 18px;
+  font-size: clamp(38px, 6vw, 68px);
+  line-height: 1.12;
+  letter-spacing: -2px;
+}
+
+.welcome-content h1 span {
+  color: #5b8cff;
+}
+
+.welcome-content p {
+  max-width: 650px;
+  margin: 0 auto;
+  color: #9aa7c2;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.get-started-button {
+  margin-top: 32px;
+  padding: 15px 30px;
+  border: none;
+  border-radius: 9px;
+  color: white;
+  background: linear-gradient(100deg, #4f82f5, #7057e8);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 30px rgba(76, 113, 235, 0.25);
+  transition: 0.2s;
+}
+
+.get-started-button:hover {
+  transform: translateY(-3px);
+  filter: brightness(1.12);
+}
+
+.get-started-button span {
+  margin-left: 10px;
+}
+
+.welcome-features {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 30px;
+  margin-top: 55px;
+  color: #b8c6e5;
+  font-size: 13px;
+}
+
+.welcome-footer {
+  padding: 22px;
+  text-align: center;
+  color: #66728f;
+  font-size: 11px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+
+@media (max-width: 600px) {
+  .welcome-nav {
+    padding: 22px 5%;
+  }
+
+  .welcome-logo {
+    font-size: 17px;
+  }
+
+  .welcome-content {
+    padding: 45px 0;
+  }
+
+  .welcome-content h1 {
+    letter-spacing: -1px;
+  }
+
+  .welcome-features {
+    gap: 18px;
+    flex-direction: column;
+  }
+}
