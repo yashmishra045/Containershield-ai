@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './app.css'
+import Welcome from './Welcome'
 import {
   PieChart,
   Pie,
@@ -32,6 +33,7 @@ export default function App() {
     try { return localStorage.getItem('csai-access-token') || '' } catch { return '' }
   })
   const [currentUser, setCurrentUser] = useState(null)
+  const [showWelcome, setShowWelcome] = useState(true)
   const [authView, setAuthView] = useState(() => {
     try { return localStorage.getItem('csai-access-token') ? 'app' : 'login' } catch { return 'login' }
   })
@@ -410,7 +412,11 @@ async function refreshScanHistory() {
     setError(err.message || 'Unable to download report')
   }
 }
-
+if (showWelcome && authView !== 'app') {
+  return (
+    <Welcome onGetStarted={() => setShowWelcome(false)} />
+  )
+}
   if (authView !== 'app') {
     const isSignup = authView === 'signup'
     const isForgot = authView === 'forgot'
