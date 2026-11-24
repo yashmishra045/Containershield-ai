@@ -1,5 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
 import './app.css'
+
+function Welcome({ onGetStarted }) {
+  const styles = {
+    page: { minHeight: '100vh', background: 'radial-gradient(circle at 15% 20%, rgba(42,91,190,.2), transparent 35%), radial-gradient(circle at 85% 80%, rgba(94,55,190,.18), transparent 35%), #070b14', color: '#e7ecf8', fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+    nav: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '28px 7%' },
+    logo: { fontSize: 22, fontWeight: 800 },
+    navButton: { padding: '11px 25px', border: '1px solid #385baf', borderRadius: 9, background: 'transparent', color: 'white', cursor: 'pointer' },
+    content: { width: 'min(900px, 90%)', margin: 'auto', textAlign: 'center', padding: '65px 0' },
+    badge: { display: 'inline-block', padding: '9px 16px', border: '1px solid rgba(91,140,255,.35)', borderRadius: 30, color: '#8eacff', background: 'rgba(91,140,255,.1)', fontSize: 11, fontWeight: 700, letterSpacing: 1.5 },
+    heading: { maxWidth: 850, margin: '28px auto 18px', fontSize: 'clamp(38px, 6vw, 68px)', lineHeight: 1.12, letterSpacing: -2 },
+    paragraph: { maxWidth: 650, margin: '0 auto', color: '#9aa7c2', fontSize: 16, lineHeight: 1.8 },
+    button: { marginTop: 32, padding: '15px 30px', border: 'none', borderRadius: 9, color: 'white', background: 'linear-gradient(100deg, #4f82f5, #7057e8)', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 30px rgba(76,113,235,.25)' },
+    features: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 30, marginTop: 55, color: '#b8c6e5', fontSize: 13 },
+    footer: { padding: 22, textAlign: 'center', color: '#66728f', fontSize: 11, borderTop: '1px solid rgba(255,255,255,.07)' }
+  }
+  return (
+    <div style={styles.page}>
+      <nav style={styles.nav}><div style={styles.logo}>🛡️ ContainerShield <span style={{ color: '#5b8cff' }}>AI</span></div><button onClick={onGetStarted} style={styles.navButton}>Login</button></nav>
+      <main style={styles.content}>
+        <div style={styles.badge}>AI-POWERED CONTAINER SECURITY</div>
+        <h1 style={styles.heading}>Secure Your Containers.<span style={{ color: '#5b8cff' }}> Ship With Confidence.</span></h1>
+        <p style={styles.paragraph}>Scan container images, detect vulnerabilities, analyze security risks and protect your applications with ContainerShield AI.</p>
+        <button style={styles.button} onClick={onGetStarted}>Get Started <span style={{ marginLeft: 10 }}>→</span></button>
+        <div style={styles.features}><div>🛡️ Vulnerability Scanning</div><div>🔍 Security Analysis</div><div>📦 SBOM Generation</div></div>
+      </main>
+      <footer style={styles.footer}>ContainerShield AI · Secure Your Container Ecosystem</footer>
+    </div>
+  )
+}
+
 import {
   PieChart,
   Pie,
@@ -32,6 +62,7 @@ export default function App() {
     try { return localStorage.getItem('csai-access-token') || '' } catch { return '' }
   })
   const [currentUser, setCurrentUser] = useState(null)
+  const [showWelcome, setShowWelcome] = useState(true)
   const [authView, setAuthView] = useState(() => {
     try { return localStorage.getItem('csai-access-token') ? 'app' : 'login' } catch { return 'login' }
   })
@@ -339,6 +370,11 @@ export default function App() {
       link.remove()
       URL.revokeObjectURL(url)
     } catch (err) { setError(err.message || 'Unable to download report') }
+  }
+  if (showWelcome && authView !== 'app') {
+    return (
+      <Welcome onGetStarted={() => setShowWelcome(false)} />
+    )
   }
 
   if (authView !== 'app') {
